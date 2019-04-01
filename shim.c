@@ -6,7 +6,7 @@
 
 #define MAX_FILENAME_SIZE 512
 
-BOOL WINAPI ctrlhandler(DWORD fdwCtrlType )
+BOOL WINAPI ctrlhandler(DWORD fdwCtrlType)
 {
   switch (fdwCtrlType) {
     // Ignore all events, and let the child process
