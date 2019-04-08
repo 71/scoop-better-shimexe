@@ -58,10 +58,10 @@ int compute_program_length(char* commandline)
 int main()
 {
   // Find filename of current executable.
-  char filename[MAX_FILENAME_SIZE];
+  char filename[MAX_FILENAME_SIZE + 2];
   unsigned long filename_size = GetModuleFileNameA(NULL, filename, MAX_FILENAME_SIZE);
 
-  if (filename_size == MAX_FILENAME_SIZE) {
+  if (filename_size >= MAX_FILENAME_SIZE) {
     fprintf(stderr, "The filename of the program is too long to handle.\n");
 
     return 1;
@@ -124,7 +124,7 @@ int main()
       strncpy(args, line + 7, len);
       args[len] = 0;
 
-      command_length += len;
+      command_length += len + 1;
       args_length = len;
 
       continue;
@@ -157,7 +157,7 @@ int main()
 
   if (args != NULL) {
     strcpy(cmd + path_length + 1, args);
-    cmd[path_length + args_length] = ' ';
+    cmd[path_length + args_length + 1] = ' ';
     cmd_i += args_length + 1;
   }
 
