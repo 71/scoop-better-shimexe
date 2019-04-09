@@ -62,10 +62,10 @@ int compute_program_length(char* commandline)
 int main()
 {
   // Find filename of current executable.
-  char filename[MAX_FILENAME_SIZE];
+  char filename[MAX_FILENAME_SIZE + 2];
   unsigned long filename_size = GetModuleFileNameA(NULL, filename, MAX_FILENAME_SIZE);
 
-  if (filename_size == MAX_FILENAME_SIZE) {
+  if (filename_size >= MAX_FILENAME_SIZE) {
     fprintf(stderr, "The filename of the program is too long to handle.\n");
 
     return 1;
@@ -128,7 +128,7 @@ int main()
       strncpy(args, line + 7, len);
       args[len] = 0;
 
-      command_length += len;
+      command_length += len + 1;
       args_length = len;
 
       continue;
@@ -161,7 +161,7 @@ int main()
 
   if (args != NULL) {
     strcpy(cmd + path_length + 1, args);
-    cmd[path_length + args_length] = ' ';
+    cmd[path_length + args_length + 1] = ' ';
     cmd_i += args_length + 1;
   }
 
@@ -170,11 +170,22 @@ int main()
 
   strcpy(cmd + cmd_i, given_cmd + program_length);
 
+  // Create job object, which can be attached to child processes
+  // to make sure they terminate when the parent terminates as well.
+  JOBOBJECT_EXTENDED_LIMIT_INFORMATION jeli = {0};
+  HANDLE jobHandle = CreateJobObject(NULL, NULL);
+
+  jeli.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK;
+  SetInformationJobObject(jobHandle, JobObjectExtendedLimitInformation, &jeli, sizeof(jeli));
+
   // Start subprocess
   STARTUPINFO si = {0};
   PROCESS_INFORMATION pi = {0};
 
-  if (!CreateProcess(NULL, cmd, NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi)) {
+  if (CreateProcess(NULL, cmd, NULL, NULL, TRUE, CREATE_SUSPENDED, NULL, NULL, &si, &pi)) {
+    AssignProcessToJobObject(jobHandle, pi.hProcess);
+    ResumeThread(pi.hThread);
+  } else {
     if (GetLastError() == ERROR_ELEVATION_REQUIRED) {
       // We must elevate the process, which is (basically) impossible with
       // CreateProcess, and therefore we fallback to ShellExecuteEx,
@@ -221,8 +232,9 @@ int main()
   GetExitCodeProcess(pi.hProcess, &exit_code);
 
   // Dispose of everything
-  CloseHandle(pi.hProcess);
   CloseHandle(pi.hThread);
+  CloseHandle(pi.hProcess);
+  CloseHandle(jobHandle);
 
   return (int)exit_code;
 }
