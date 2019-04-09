@@ -166,11 +166,22 @@ int main()
 
   strcpy(cmd + cmd_i, given_cmd + program_length);
 
+  // Create job object, which can be attached to child processes
+  // to make sure they terminate when the parent terminates as well.
+  JOBOBJECT_EXTENDED_LIMIT_INFORMATION jeli = {0};
+  HANDLE jobHandle = CreateJobObject(NULL, NULL);
+
+  jeli.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK;
+  SetInformationJobObject(jobHandle, JobObjectExtendedLimitInformation, &jeli, sizeof(jeli));
+
   // Start subprocess
   STARTUPINFO si = {0};
   PROCESS_INFORMATION pi = {0};
 
-  if (!CreateProcess(NULL, cmd, NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi)) {
+  if (CreateProcess(NULL, cmd, NULL, NULL, TRUE, CREATE_SUSPENDED, NULL, NULL, &si, &pi)) {
+    AssignProcessToJobObject(jobHandle, pi.hProcess);
+    ResumeThread(pi.hThread);
+  } else {
     if (GetLastError() == ERROR_ELEVATION_REQUIRED) {
       // We must elevate the process, which is (basically) impossible with
       // CreateProcess, and therefore we fallback to ShellExecuteEx,
@@ -217,8 +228,9 @@ int main()
   GetExitCodeProcess(pi.hProcess, &exit_code);
 
   // Dispose of everything
-  CloseHandle(pi.hProcess);
   CloseHandle(pi.hThread);
+  CloseHandle(pi.hProcess);
+  CloseHandle(jobHandle);
 
   return (int)exit_code;
 }
