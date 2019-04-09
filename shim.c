@@ -4,6 +4,10 @@
 #include <stdlib.h>
 #include <Windows.h>
 
+#ifndef ERROR_ELEVATION_REQUIRED
+#  define ERROR_ELEVATION_REQUIRED 740
+#endif
+
 #define MAX_FILENAME_SIZE 512
 
 BOOL WINAPI ctrlhandler(DWORD fdwCtrlType)
