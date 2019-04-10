@@ -11,11 +11,13 @@ file to redirect commands from `scoop\shims\app.exe` to `scoop\apps\app\current\
 The last issue making interaction with REPLs and long-running apps practically impossible,
 and having never been fixed, I set out to improve them with this repository.
 
-[`shim.c`](./shim.c) is a C program which avoids unnecessary allocations and simply wraps a
-call to [`CreateProcess`](https://docs.microsoft.com/en-us/windows/desktop/api/processthreadsapi/nf-processthreadsapi-createprocessa),
-essentially doing the exact same thing as the existing `shim.exe`, without the needless .NET framework.
-
-Additionally, it ignores Ctrl+C and other signals, giving full control of these signals to the child process.
+[`shim.c`](./shim.c) is:
+- **Faster**, because it does not use the .NET Framework, and parses the `.shim` file in a simpler way.
+- **More efficient**, because by the time the target of the shim is started, all allocated memory will have been freed.
+- And more importantly, it **works better**:
+  - Signals originating from pressing `Ctrl+C` are ignored, and therefore handled directly by the spawned child.
+    Your processes and REPLs will no longer close when pressing `Ctrl+C`.
+  - Children are automatically killed when the shim process is killed. No more orphaned processes and weird behaviors.
 
 ## Installation
 
