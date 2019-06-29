@@ -19,6 +19,8 @@ and having never been fixed, I set out to improve them with this repository.
     Your processes and REPLs will no longer close when pressing `Ctrl+C`.
   - Children are automatically killed when the shim process is killed. No more orphaned processes and weird behaviors.
 
+> **Note**: This project is not affiliated with [Scoop](https://github.com/lukesampson/scoop).
+
 ## Installation
 
 - In a Visual Studio command prompt, run `cl /O1 shim.c`.
@@ -26,3 +28,8 @@ and having never been fixed, I set out to improve them with this repository.
 
 An additional script, `repshims.bat`, is provided. It will replace all `.exe`s in the user's Scoop directory
 by `shim.exe`.
+
+
+## License
+
+`SPDX-License-Identifier: MIT OR Unlicense`
