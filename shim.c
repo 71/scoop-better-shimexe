@@ -1,5 +1,4 @@
 #pragma comment(lib, "SHELL32.LIB")
-#pragma comment(lib, "USER32.LIB")
 
 #include <stdio.h>
 #include <stdlib.h>
