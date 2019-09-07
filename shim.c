@@ -1,7 +1,9 @@
 #pragma comment(lib, "SHELL32.LIB")
+#pragma comment(lib, "USER32.LIB")
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <wchar.h>
 #include <Windows.h>
 
 #ifndef ERROR_ELEVATION_REQUIRED
@@ -27,33 +29,33 @@ BOOL WINAPI ctrlhandler(DWORD fdwCtrlType)
   }
 }
 
-int compute_program_length(char* commandline)
+int compute_program_length(const wchar_t* commandline)
 {
   int i = 0;
 
-  if (commandline[0] == '"') {
+  if (commandline[0] == L'"') {
     // Wait till end of string
     i++;
 
     for (;;) {
-      char c = commandline[i++];
+      wchar_t c = commandline[i++];
 
       if (c == 0)
         return i - 1;
-      else if (c == '\\')
+      else if (c == L'\\')
         i++;
-      else if (c == '"')
+      else if (c == L'"')
         return i;
     }
   } else {
     for (;;) {
-      char c = commandline[i++];
+      wchar_t c = commandline[i++];
 
       if (c == 0)
         return i - 1;
-      else if (c == '\\')
+      else if (c == L'\\')
         i++;
-      else if (c == ' ')
+      else if (c == L' ')
         return i;
     }
   }
@@ -62,8 +64,8 @@ int compute_program_length(char* commandline)
 int main()
 {
   // Find filename of current executable.
-  char filename[MAX_FILENAME_SIZE + 2];
-  unsigned long filename_size = GetModuleFileNameA(NULL, filename, MAX_FILENAME_SIZE);
+  wchar_t filename[MAX_FILENAME_SIZE + 2];
+  const unsigned int filename_size = GetModuleFileNameW(NULL, filename, MAX_FILENAME_SIZE);
 
   if (filename_size >= MAX_FILENAME_SIZE) {
     fprintf(stderr, "The filename of the program is too long to handle.\n");
@@ -72,15 +74,15 @@ int main()
   }
 
   // Use filename of current executable to find .shim
-  filename[filename_size - 3] = 's';
-  filename[filename_size - 2] = 'h';
-  filename[filename_size - 1] = 'i';
-  filename[filename_size - 0] = 'm';
+  filename[filename_size - 3] = L's';
+  filename[filename_size - 2] = L'h';
+  filename[filename_size - 1] = L'i';
+  filename[filename_size - 0] = L'm';
   filename[filename_size + 1] =  0 ;
 
-  FILE* shim_file = fopen(filename, "r");
+  FILE* shim_file;
 
-  if (shim_file == NULL) {
+  if (_wfopen_s(&shim_file, filename, L"r,ccs=UTF-8")) {
     fprintf(stderr, "Cannot open shim file for read.\n");
 
     return 1;
@@ -91,29 +93,27 @@ int main()
   size_t args_length;
 
   // Read shim
-  char* path = NULL;
-  char* args = NULL;
-  char* linebuf = calloc(20000, sizeof(char));
+  const size_t ALLOCATED_BYTES = 8192;
+
+  wchar_t* path = NULL;
+  wchar_t* args = NULL;
+  wchar_t* linebuf = malloc(ALLOCATED_BYTES);
 
   for (;;) {
-    char* line = fgets(linebuf, 20000, shim_file);
+    const wchar_t* line = fgetws(linebuf, ALLOCATED_BYTES, shim_file);
 
     if (line == NULL)
       break;
 
-    if (line[0] == (char)0xEF && line[1] == (char)0xBB && line[2] == (char)0xBF)
-      // Damn BOM
-      line += 3;
-
-    if (line[4] != ' ' || line[5] != '=' || line[6] != ' ')
+    if (line[4] != L' ' || line[5] != L'=' || line[6] != L' ')
       continue;
 
-    const int len = strlen(line) - 8;
+    const int len = wcslen(line) - 8;
 
-    if (line[0] == 'p' && line[1] == 'a' && line[2] == 't' && line[3] == 'h') {
+    if (line[0] == L'p' && line[1] == L'a' && line[2] == L't' && line[3] == L'h') {
       // Reading path
-      path = malloc(len);
-      strncpy(path, line + 7, len);
+      path = calloc(len, sizeof(wchar_t));
+      wmemcpy(path, line + 7, len);
       path[len] = 0;
 
       command_length += len;
@@ -122,10 +122,10 @@ int main()
       continue;
     }
 
-    if (line[0] == 'a' && line[1] == 'r' && line[2] == 'g' && line[3] == 's') {
+    if (line[0] == L'a' && line[1] == L'r' && line[2] == L'g' && line[3] == L's') {
       // Reading args
-      args = malloc(len);
-      strncpy(args, line + 7, len);
+      args = calloc(len, sizeof(wchar_t));
+      wmemcpy(args, line + 7, len);
       args[len] = 0;
 
       command_length += len + 1;
@@ -146,29 +146,40 @@ int main()
   }
 
   // Find length of command to run
-  char* given_cmd = GetCommandLineA();
-  int given_length = strlen(given_cmd);
+  wchar_t* given_cmd = GetCommandLineW();
+  const int program_length = compute_program_length(given_cmd);
+
+  given_cmd += program_length;
+
+  const int given_length = wcslen(given_cmd);
 
   command_length += given_length;
 
   // Start building command to run, using '[path] [args]', as given by shim.
-  char* cmd = (char*)malloc(command_length);
+  wchar_t* cmd = calloc(command_length, sizeof(wchar_t));
   int cmd_i = 0;
 
-  strcpy(cmd, path);
+  wmemcpy(cmd, path, path_length);
   cmd[path_length] = ' ';
   cmd_i += path_length + 1;
 
   if (args != NULL) {
-    strcpy(cmd + path_length + 1, args);
+    wmemcpy(cmd + path_length + 1, args, args_length);
     cmd[path_length + args_length + 1] = ' ';
     cmd_i += args_length + 1;
   }
 
   // Copy all given arguments to command
-  int program_length = compute_program_length(given_cmd);
+  wmemcpy(cmd + cmd_i, given_cmd, given_length);
 
-  strcpy(cmd + cmd_i, given_cmd + program_length);
+  // Find out if the target program is a console app
+  SHFILEINFOW sfi = {0};
+  const BOOL is_windows_app = HIWORD(SHGetFileInfoW(path, -1, &sfi, sizeof(sfi), SHGFI_EXETYPE));
+
+  if (is_windows_app)
+    // Unfortunately, this technique will still show a window for a fraction of time,
+    // but there's just no workaround.
+    FreeConsole();
 
   // Create job object, which can be attached to child processes
   // to make sure they terminate when the parent terminates as well.
@@ -179,10 +190,10 @@ int main()
   SetInformationJobObject(jobHandle, JobObjectExtendedLimitInformation, &jeli, sizeof(jeli));
 
   // Start subprocess
-  STARTUPINFO si = {0};
+  STARTUPINFOW si = {0};
   PROCESS_INFORMATION pi = {0};
 
-  if (CreateProcess(NULL, cmd, NULL, NULL, TRUE, CREATE_SUSPENDED, NULL, NULL, &si, &pi)) {
+  if (CreateProcessW(NULL, cmd, NULL, NULL, TRUE, CREATE_SUSPENDED, NULL, NULL, &si, &pi)) {
     AssignProcessToJobObject(jobHandle, pi.hProcess);
     ResumeThread(pi.hThread);
   } else {
@@ -193,23 +204,23 @@ int main()
       // window.
       // Theorically, this could be fixed (or rather, worked around) using pipes
       // and IPC, but... this is a question for another day.
-      SHELLEXECUTEINFOA sei = {0};
+      SHELLEXECUTEINFOW sei = {0};
 
-      sei.cbSize       = sizeof(SHELLEXECUTEINFOA);
+      sei.cbSize       = sizeof(SHELLEXECUTEINFOW);
       sei.fMask        = SEE_MASK_NOCLOSEPROCESS;
       sei.lpFile       = path;
       sei.lpParameters = cmd + path_length + 1;
       sei.nShow        = SW_SHOW;
 
-      if (!ShellExecuteExA(&sei)) {
-        fprintf(stderr, "Unable to create elevated process: error %i.", GetLastError());
+      if (!ShellExecuteExW(&sei)) {
+        fprintf(stderr, "Unable to create elevated process: error %li.", GetLastError());
 
         return 1;
       }
 
       pi.hProcess = sei.hProcess;
     } else {
-      fprintf(stderr, "Could not create process with command '%s'.\n", cmd);
+      fprintf(stderr, "Could not create process with command '%ls'.\n", cmd);
 
       return 1;
     }
