@@ -62,6 +62,12 @@ int compute_program_length(const wchar_t* commandline)
 
 int main()
 {
+  DWORD exit_code = 0;
+
+  wchar_t* path = NULL;
+  wchar_t* args = NULL;
+  wchar_t* cmd = NULL;
+
   // Find filename of current executable.
   wchar_t filename[MAX_FILENAME_SIZE + 2];
   const unsigned int filename_size = GetModuleFileNameW(NULL, filename, MAX_FILENAME_SIZE);
@@ -69,7 +75,8 @@ int main()
   if (filename_size >= MAX_FILENAME_SIZE) {
     fprintf(stderr, "The filename of the program is too long to handle.\n");
 
-    return 1;
+    exit_code = 1;
+    goto cleanup;
   }
 
   // Use filename of current executable to find .shim
@@ -81,10 +88,11 @@ int main()
 
   FILE* shim_file;
 
-  if (_wfopen_s(&shim_file, filename, L"r,ccs=UTF-8")) {
+  if ((shim_file = _wfsopen(filename, L"r,ccs=UTF-8", _SH_DENYNO)) == NULL ) {
     fprintf(stderr, "Cannot open shim file for read.\n");
 
-    return 1;
+    exit_code = 1;
+    goto cleanup;
   }
 
   size_t command_length = 256;
@@ -92,14 +100,10 @@ int main()
   size_t args_length;
 
   // Read shim
-  const size_t ALLOCATED_BYTES = 8192;
-
-  wchar_t* path = NULL;
-  wchar_t* args = NULL;
-  wchar_t* linebuf = malloc(ALLOCATED_BYTES);
+  wchar_t linebuf[8192];
 
   for (;;) {
-    const wchar_t* line = fgetws(linebuf, ALLOCATED_BYTES, shim_file);
+    const wchar_t* line = fgetws(linebuf, 8192, shim_file);
 
     if (line == NULL)
       break;
@@ -140,7 +144,8 @@ int main()
   if (path == NULL) {
     fprintf(stderr, "Could not read shim file.\n");
 
-    return 1;
+    exit_code = 1;
+    goto cleanup;
   }
 
   // Find length of command to run
@@ -154,7 +159,7 @@ int main()
   command_length += given_length;
 
   // Start building command to run, using '[path] [args]', as given by shim.
-  wchar_t* cmd = calloc(command_length, sizeof(wchar_t));
+  cmd = calloc(command_length, sizeof(wchar_t));
   int cmd_i = 0;
 
   wmemcpy(cmd, path, path_length);
@@ -213,22 +218,18 @@ int main()
       if (!ShellExecuteExW(&sei)) {
         fprintf(stderr, "Unable to create elevated process: error %li.", GetLastError());
 
-        return 1;
+        exit_code = 1;
+        goto cleanup;
       }
 
       pi.hProcess = sei.hProcess;
     } else {
       fprintf(stderr, "Could not create process with command '%ls'.\n", cmd);
 
-      return 1;
+      exit_code = 1;
+      goto cleanup;
     }
   }
-
-  // Free obsolete buffers
-  free(path);
-  free(args);
-  free(linebuf);
-  free(cmd);
 
   // Ignore Ctrl-C and other signals
   if (!SetConsoleCtrlHandler(ctrlhandler, TRUE))
@@ -237,13 +238,19 @@ int main()
   // Wait till end of process
   WaitForSingleObject(pi.hProcess, INFINITE);
 
-  DWORD exit_code;
   GetExitCodeProcess(pi.hProcess, &exit_code);
 
   // Dispose of everything
   CloseHandle(pi.hThread);
   CloseHandle(pi.hProcess);
   CloseHandle(jobHandle);
+
+cleanup:
+
+  // Free obsolete buffers
+  free(path);
+  free(args);
+  free(cmd);
 
   return (int)exit_code;
 }
