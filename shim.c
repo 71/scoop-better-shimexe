@@ -112,9 +112,8 @@ int main()
 
     if (line[0] == L'p' && line[1] == L'a' && line[2] == L't' && line[3] == L'h') {
       // Reading path
-      path = calloc(len, sizeof(wchar_t));
+      path = calloc(len + 1, sizeof(wchar_t));
       wmemcpy(path, line + 7, len);
-      path[len] = 0;
 
       command_length += len;
       path_length = len;
@@ -124,9 +123,8 @@ int main()
 
     if (line[0] == L'a' && line[1] == L'r' && line[2] == L'g' && line[3] == L's') {
       // Reading args
-      args = calloc(len, sizeof(wchar_t));
+      args = calloc(len + 1, sizeof(wchar_t));
       wmemcpy(args, line + 7, len);
-      args[len] = 0;
 
       command_length += len + 1;
       args_length = len;
