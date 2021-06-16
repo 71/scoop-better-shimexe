@@ -88,7 +88,7 @@ int main()
 
   FILE* shim_file;
 
-  if ((shim_file = _wfsopen(filename, L"r,ccs=UTF-8", _SH_DENYNO)) == NULL ) {
+  if ((shim_file = _wfsopen(filename, L"r,ccs=UTF-8", _SH_DENYNO)) == NULL) {
     fprintf(stderr, "Cannot open shim file for read.\n");
 
     exit_code = 1;
