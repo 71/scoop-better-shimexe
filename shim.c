@@ -112,12 +112,31 @@ int main()
       continue;
 
     const int linelen = wcslen(line);
-    const int len = linelen - 8 + (line[linelen - 1] != '\n');
+    int len = linelen - 8 + (line[linelen - 1] != '\n');
 
     if (line[0] == L'p' && line[1] == L'a' && line[2] == L't' && line[3] == L'h') {
+      // Checking if path contains a space
+      BOOL add_quotes = FALSE;
+      if (line[7] != L'"') {
+        for (size_t i = 7; i < len; ++i) {
+          if (line[i] == L' ') {
+            add_quotes = TRUE;
+            break;
+          }
+        }
+      }
+
+      len += add_quotes ? 2 : 0;
+
       // Reading path
       path = calloc(len + 1, sizeof(wchar_t));
-      wmemcpy(path, line + 7, len);
+      if (add_quotes) {
+        path[0] = L'"';
+        wmemcpy(path + 1, line + 7, len - 1);
+        path[len - 1] = L'"';
+      } else {
+        wmemcpy(path, line + 7, len);
+      }
 
       command_length += len;
       path_length = len;
