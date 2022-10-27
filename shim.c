@@ -243,7 +243,7 @@ int main()
 
       pi.hProcess = sei.hProcess;
     } else {
-      fprintf(stderr, "Could not create process with command '%ls'.\n", cmd);
+      fprintf(stderr, "Shim: Could not create process with command '%ls'.\n", cmd);
 
       exit_code = 1;
       goto cleanup;
