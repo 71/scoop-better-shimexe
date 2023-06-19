@@ -96,14 +96,14 @@ BOOL read_shim_file(wchar_t** path, wchar_t** args)
     free(line_buf);
     fclose(shim_file);
 
-	return path != NULL;
+    return path != NULL;
 }
 
 BOOL WINAPI ctrlhandler(DWORD fdwCtrlType)
 {
     switch (fdwCtrlType) {
-	// Ignore all events, and let the child process
-	// handle them.
+    // Ignore all events, and let the child process
+    // handle them.
     case CTRL_C_EVENT:
     case CTRL_CLOSE_EVENT:
     case CTRL_LOGOFF_EVENT:
