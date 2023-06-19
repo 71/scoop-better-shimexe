@@ -61,7 +61,7 @@ int compute_program_length(const wchar_t* commandline)
     }
 }
 
-wchar_t* build_parameters(wchar_t* shim_args)
+wchar_t* build_command_line(const wchar_t* path, const wchar_t* shim_args)
 {
     // Find length of command to run
     wchar_t* cmd_line = GetCommandLineW();
@@ -70,27 +70,27 @@ wchar_t* build_parameters(wchar_t* shim_args)
     while (*cmd_line == L' ')
         ++cmd_line;
 
-    const size_t cmd_line_args_len = wcslen(cmd_line);
+    size_t output_len = path ? wcslen(path) + 4 : 1;
+    if (shim_args)
+        output_len += wcslen(shim_args) + 1;
+    output_len += wcslen(cmd_line);
 
-    size_t params_len = 1;
-    if (shim_args) {
-        params_len += wcslen(shim_args);
-        if (cmd_line_args_len)
-            ++params_len; // space separator
-    }
-    params_len += cmd_line_args_len;
+    wchar_t* output = calloc(output_len, sizeof(wchar_t));
+    assert(output);
 
-    wchar_t* params = calloc(params_len, sizeof(wchar_t));
-    assert(params);
-
-    if (shim_args) {
-        wcscat_s(params, params_len, shim_args);
-        if (cmd_line_args_len)
-            wcscat_s(params, params_len, L" ");
+    if (path) {
+        wcscat_s(output, output_len, L"\"");
+        wcscat_s(output, output_len, path);
+        wcscat_s(output, output_len, L"\" ");
     }
 
-    wcscat_s(params, params_len, cmd_line);
-    return params;
+    if (shim_args) {
+        wcscat_s(output, output_len, shim_args);
+        wcscat_s(output, output_len, L" ");
+    }
+
+    wcscat_s(output, output_len, cmd_line);
+    return output;
 }
 
 int main()
@@ -99,7 +99,7 @@ int main()
 
     wchar_t* path = NULL;
     wchar_t* args = NULL;
-    wchar_t* params = NULL;
+    wchar_t* command_line = NULL;
 
     // Find filename of current executable.
     wchar_t filename[MAX_FILENAME_SIZE + 2];
@@ -178,8 +178,6 @@ int main()
         goto cleanup;
     }
 
-    params = build_parameters(args);
-
     // Find out if the target program is a console app
     SHFILEINFOW sfi = {0};
     const BOOL is_windows_app = HIWORD(SHGetFileInfoW(path, -1, &sfi, sizeof(sfi), SHGFI_EXETYPE));
@@ -204,7 +202,9 @@ int main()
     STARTUPINFOW si = {0};
     PROCESS_INFORMATION pi = {0};
 
-    if (CreateProcessW(path, params, NULL, NULL, TRUE, CREATE_SUSPENDED, NULL, NULL, &si, &pi)) {
+    command_line = build_command_line(path, args);
+
+    if (CreateProcessW(NULL, command_line, NULL, NULL, TRUE, CREATE_SUSPENDED, NULL, NULL, &si, &pi)) {
         if (job_handle) {
             AssignProcessToJobObject(job_handle, pi.hProcess);
         }
@@ -219,10 +219,14 @@ int main()
             // and IPC, but... this is a question for another day.
             SHELLEXECUTEINFOW sei = {0};
 
+            // rebuild the command-line without the program name
+            free(command_line);
+            command_line = build_command_line(NULL, args);
+
             sei.cbSize = sizeof(SHELLEXECUTEINFOW);
             sei.fMask = SEE_MASK_NOCLOSEPROCESS;
             sei.lpFile = path;
-            sei.lpParameters = params;
+            sei.lpParameters = command_line;
             sei.nShow = SW_SHOW;
 
             if (!ShellExecuteExW(&sei)) {
@@ -264,7 +268,7 @@ cleanup:
   // Free obsolete buffers
     free(path);
     free(args);
-    free(params);
+    free(command_line);
 
     return (int)exit_code;
 }
