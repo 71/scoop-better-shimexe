@@ -12,6 +12,93 @@
 
 #define MAX_FILENAME_SIZE 512
 
+BOOL read_shim_file(wchar_t** path, wchar_t** args)
+{
+    // Find filename of current executable.
+    wchar_t filename[MAX_FILENAME_SIZE + 2];
+    const DWORD filename_size = GetModuleFileNameW(NULL, filename, MAX_FILENAME_SIZE);
+
+    if (filename_size >= MAX_FILENAME_SIZE) {
+        fprintf(stderr, "The filename of the program is too long to handle.\n");
+        return FALSE;
+    }
+
+    // Use filename of current executable to find .shim
+    filename[filename_size - 3] = L's';
+    filename[filename_size - 2] = L'h';
+    filename[filename_size - 1] = L'i';
+    filename[filename_size - 0] = L'm';
+    filename[filename_size + 1] = 0;
+
+    FILE* shim_file;
+
+    if ((shim_file = _wfsopen(filename, L"r,ccs=UTF-8", _SH_DENYNO)) == NULL) {
+        fprintf(stderr, "Cannot open shim file for read.\n");
+        return FALSE;
+    }
+
+    wchar_t* const line_buf = calloc(8192, sizeof(wchar_t));
+
+    // Read shim
+    for (;;) {
+        wchar_t* line = fgetws(line_buf, 8192, shim_file);
+
+        if (line == NULL)
+            break;
+
+        size_t line_len = wcslen(line);
+
+        // trim trailing white space including CR & LF
+        while (line_len > 7 && iswspace(line[line_len - 1]))
+            --line_len;
+        line[line_len] = 0;
+
+        size_t offset = 4;
+
+        if (!wmemcmp(line, L"path", 4)) {
+            // Reading path
+            while (line[offset] == L' ')
+                ++offset;
+            if (line[offset++] != L'=')
+                continue;
+            while (line[offset] == L' ')
+                ++offset;
+
+            size_t len = line_len - offset;
+
+            // skip quotes
+            if (line[offset] == L'"' && line[line_len - 1] == L'"') {
+                ++offset;
+                len -= 2;
+            }
+
+            *path = calloc(len + 1, sizeof(wchar_t));
+            assert(*path);
+            wmemcpy(*path, line + offset, len);
+        }
+        else if (!wmemcmp(line, L"args", 4)) {
+            // Reading args
+            while (line[offset] == L' ')
+                ++offset;
+            if (line[offset++] != L'=')
+                continue;
+            while (line[offset] == L' ')
+                ++offset;
+
+            const size_t len = line_len - offset;
+
+            *args = calloc(len + 1, sizeof(wchar_t));
+            assert(*args);
+            wmemcpy(*args, line + offset, len);
+        }
+    }
+
+    free(line_buf);
+    fclose(shim_file);
+
+	return path != NULL;
+}
+
 BOOL WINAPI ctrlhandler(DWORD fdwCtrlType)
 {
     switch (fdwCtrlType) {
@@ -99,86 +186,15 @@ int main()
     wchar_t* args = NULL;
     wchar_t* command_line = NULL;
 
-    // Find filename of current executable.
-    wchar_t filename[MAX_FILENAME_SIZE + 2];
-    const unsigned int filename_size = GetModuleFileNameW(NULL, filename, MAX_FILENAME_SIZE);
-
-    if (filename_size >= MAX_FILENAME_SIZE) {
-        fprintf(stderr, "The filename of the program is too long to handle.\n");
-
-        exit_code = 1;
-        goto cleanup;
-    }
-
-    // Use filename of current executable to find .shim
-    filename[filename_size - 3] = L's';
-    filename[filename_size - 2] = L'h';
-    filename[filename_size - 1] = L'i';
-    filename[filename_size - 0] = L'm';
-    filename[filename_size + 1] = 0;
-
-    FILE* shim_file;
-
-    if ((shim_file = _wfsopen(filename, L"r,ccs=UTF-8", _SH_DENYNO)) == NULL) {
-        fprintf(stderr, "Cannot open shim file for read.\n");
-
-        exit_code = 1;
-        goto cleanup;
-    }
-
-    wchar_t* const line_buf = calloc(8192, sizeof(wchar_t));
-
-    // Read shim
-    for (;;) {
-        wchar_t* line = fgetws(line_buf, 8192, shim_file);
-
-        if (line == NULL)
-            break;
-
-        size_t line_len = wcslen(line);
-
-        // trim trailing white space including CR & LF
-        while (line_len > 7 && iswspace(line[line_len - 1]))
-            --line_len;
-        line[line_len] = 0;
-
-        size_t offset = 7;
-        size_t len = line_len - offset;
-
-        if (!wmemcmp(line, L"path = ", 7)) {
-            // Reading path
-
-            // skip quotes
-            if (line[offset] == L'"' && line[line_len - 1] == L'"') {
-                ++offset;
-                len -= 2;
-            }
-
-            path = calloc(len + 1, sizeof(wchar_t));
-            assert(path);
-            wmemcpy(path, line + offset, len);
-        }
-        else if (!wmemcmp(line, L"args = ", 7)) {
-            // Reading args
-            args = calloc(len + 1, sizeof(wchar_t));
-            assert(args);
-            wmemcpy(args, line + offset, len);
-        }
-    }
-
-    free(line_buf);
-    fclose(shim_file);
-
-    if (path == NULL) {
+    if (!read_shim_file(&path, &args)) {
         fprintf(stderr, "Could not read shim file.\n");
-
         exit_code = 1;
         goto cleanup;
     }
 
     // Find out if the target program is a console app
     SHFILEINFOW sfi = {0};
-    const BOOL is_windows_app = HIWORD(SHGetFileInfoW(path, -1, &sfi, sizeof(sfi), SHGFI_EXETYPE));
+    const BOOL is_windows_app = HIWORD(SHGetFileInfoW(path, -1, &sfi, sizeof(sfi), SHGFI_EXETYPE)) != 0;
 
     HANDLE job_handle = NULL;
 
@@ -261,8 +277,6 @@ int main()
     CloseHandle(pi.hThread);
 
 cleanup:
-
-  // Free obsolete buffers
     free(path);
     free(args);
     free(command_line);
