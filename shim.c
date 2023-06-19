@@ -65,30 +65,28 @@ wchar_t* build_command_line(const wchar_t* path, const wchar_t* shim_args)
 {
     // Find length of command to run
     wchar_t* cmd_line = GetCommandLineW();
-
     cmd_line += compute_program_length(cmd_line);
     while (*cmd_line == L' ')
         ++cmd_line;
 
-    size_t output_len = path ? wcslen(path) + 4 : 1;
+    size_t output_len = 1;
+    if (path)
+        output_len += wcslen(path) + 3;
     if (shim_args)
         output_len += wcslen(shim_args) + 1;
     output_len += wcslen(cmd_line);
 
     wchar_t* output = calloc(output_len, sizeof(wchar_t));
     assert(output);
-
     if (path) {
         wcscat_s(output, output_len, L"\"");
         wcscat_s(output, output_len, path);
         wcscat_s(output, output_len, L"\" ");
     }
-
     if (shim_args) {
         wcscat_s(output, output_len, shim_args);
         wcscat_s(output, output_len, L" ");
     }
-
     wcscat_s(output, output_len, cmd_line);
     return output;
 }
@@ -252,7 +250,6 @@ int main()
             fprintf(stderr, "Could not set control handler; Ctrl-C behavior may be invalid.\n");
 
         assert(pi.hProcess);
-
         WaitForSingleObject(pi.hProcess, INFINITE);
         GetExitCodeProcess(pi.hProcess, &exit_code);
 
